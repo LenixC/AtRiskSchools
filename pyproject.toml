@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "atriskschools"
+version = "0.1.0"
+description = ""
+authors = ["Lenix Carter <lenixc210@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+streamlit = "^1.32.2"
+pandas = "^2.2.1"
+catboost = "^1.2.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
