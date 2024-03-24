@@ -191,9 +191,18 @@ def multi_sel_scatter(df):
 
 
 def build_logreg(data_proc):
+    st.markdown(
+        '''
+        ## Logistic Regression
+        We use logistic regression as a baseline technique to showcase
+        the effectiveness of our model. 
+        '''
+    )
     with st.expander("Baseline Logistic Regression Performance"):
         accuracy, report = data_proc.baseline_logreg()
 
+        st.write("Below is the score of our logistic regression. \
+            We seek to beat this for our model.")
         st.markdown("##### Accuracy: ")
         st.write(accuracy)
         st.markdown("##### Classification Report")
@@ -201,37 +210,62 @@ def build_logreg(data_proc):
 
 
 def build_cat(data_proc):
+    st.markdown(
+        '''
+        ## CatBoost
+        This is our chosen model, CatBoost. 
+        CatBoost utilizes gradient boosted decision trees to model a classify the target variable.
+        '''
+    )
     with st.expander("Catboost Model Performance"):
         scores = data_proc.train_cat()
+        st.write("These are our Model\'s scores over a many iterations while being cross-validated.")
         st.write(scores)
 
         accuracy, report = data_proc.cat_f1(scores)
+        st.write("These are our scores to compare to logistic regression.")
         st.markdown("##### Accuracy: ")
         st.write(accuracy)
         st.markdown("##### Classification Report")
         st.text(report)
 
+        st.write("This is our list of features and how important they are to classifying dropout rate.")
         sorted_feat_imp = data_proc.feature_importance_list()
         st.dataframe(pd.DataFrame(sorted_feat_imp,
                                   columns=['Features', 'Importance']))
 
 def explore_clusters(data_proc):
     with st.expander("Segmentation Analysis"):
+        st.write("These are our clusters with our top 10 features. This groups our at risk schools into several categories.")
         fig, cluster_analysis = data_proc.cluster_at_risk_schools()
+        st.write("This is the visual representation of our clusters. This 10 dimensional representation has been reduced to 2 for interpretability.")
+        st.write("You can hover over individual dots to see more information about them. (It is a little buggy, at the moment.)")
         st.plotly_chart(fig)
-        st.write(cluster_analysis)
+        st.write("This is the statistical representation of the clusters. We seek to qualitatively describe these clusters using background infromation.")
+        st.write(cluster_analysis.drop(columns='SCHOOL_ID'))
 
 
 def main():
     st.title('At Risk Schools')
+    st.markdown(
+        '''
+        This is an attempt to identify at risk schools using dropout rates
+        as a target variable. Schools with a dropout rate of above the 75th
+        percentil are identified as at risk.
+        '''
+    )
     data_processor = (
         DataProcessor('Focused_School_Data_Cleaned.csv')
     )
     data_processor.create_target_column(0.75)
     with st.expander("Exploratory Data Analysis"):
-        st.dataframe(data_processor.data)
+        st.write('This is our dataset. It is a list of schools with many features that we seek to learn from.')
+        st.dataframe(data_processor.full_data)
+        st.write("This is the statistical distribution of each of our columns.")
         st.dataframe(data_processor.data.drop(columns='SCHOOL_ID').describe())
+        st.write("This is the correlation between two columns.")
         st.dataframe(data_processor.data.drop(columns='SCHOOL_ID').corr())
+        st.write("Here you can select two columns and a graph will show a scatterplot of the two features.")
         multi_sel_scatter(data_processor.data)
     build_logreg(data_processor)
     build_cat(data_processor)
