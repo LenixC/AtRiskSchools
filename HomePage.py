@@ -3,16 +3,20 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.linear_model import LogisticRegression
 from sklearn.impute import KNNImputer
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.manifold import TSNE
 from catboost import CatBoostClassifier, cv, Pool
 
 
 class DataProcessor:
     def __init__(self, file_path):
-        self.data = pd.read_csv(file_path)
+        self.full_data = pd.read_csv(file_path)
+        self.data = self.full_data.drop(columns='INSTN_NAME')
         self.imputed = None
         self.X = None
         self.y = None
@@ -41,7 +45,7 @@ class DataProcessor:
         imputer = KNNImputer(n_neighbors=5)
         imputed = imputer.fit_transform(self.data)
         self.imputed = pd.DataFrame(imputed, columns=self.data.columns)
-        self.X = self.imputed.drop(columns='high_dropout')
+        self.X = self.imputed.drop(columns=['high_dropout'])
         self.y = self.imputed['high_dropout']
 
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
@@ -61,7 +65,7 @@ class DataProcessor:
 
         return accuracy, report
 
-    
+
     def train_cat(self):
         cv_dataset = Pool(data=self.X, label=self.y)
 
@@ -118,6 +122,60 @@ class DataProcessor:
         return self.sorted_feature_importance
 
 
+    def cluster_at_risk_schools(self):
+        top_10 = [tup[0] for tup in self.sorted_feature_importance[:10]]
+
+        high_drop_schools = self.imputed[self.imputed['high_dropout']==1]
+
+        scaler = MinMaxScaler()
+        normalized_data = scaler.fit_transform(high_drop_schools)
+
+        param_grid = {
+            'n_clusters': [2, 3, 4, 5],
+            'init': ['k-means++', 'random'],
+            'max_iter': [100, 200, 300]
+        }
+
+        kmeans = KMeans()
+
+        grid_search = GridSearchCV(estimator=kmeans, param_grid=param_grid, cv=5)
+        grid_search.fit(normalized_data)
+
+        best_kmeans = grid_search.best_estimator_
+
+        clusters = best_kmeans.fit_predict(normalized_data)
+
+        _tsne = TSNE(n_components=2, random_state=42)
+        tsne_data = _tsne.fit_transform(normalized_data)
+
+        df_tsne = pd.DataFrame(tsne_data, columns=['t-SNE Component 1', 't-SNE Component 2'])
+        df_tsne['Cluster'] = clusters
+
+        df_tsne = pd.concat([df_tsne, self.full_data[['INSTN_NAME'] + top_10]], axis=1)
+        st.write(df_tsne)
+
+        fig = px.scatter(df_tsne, x='t-SNE Component 1', y='t-SNE Component 2', 
+                         color='Cluster', title='t-SNE Plot of K-means Clustering', 
+                         opacity=0.75, color_continuous_scale='viridis',
+                         hover_data=['INSTN_NAME'] + top_10)
+        fig.update_layout(xaxis_title='t-SNE Component 1', yaxis_title='t-SNE Component 2', coloraxis_colorbar=dict(title='Cluster'))
+
+        cluster_analysis = high_drop_schools[["SCHOOL_ID"] + top_10].copy()
+        cluster_analysis["cluster"] = clusters
+
+        cluster_analysis = cluster_analysis.groupby("cluster").mean()
+
+        stand_scaler = StandardScaler()
+        standardized_cluster_analysis = (
+            pd.DataFrame(stand_scaler.fit_transform(cluster_analysis),
+                        columns=cluster_analysis.columns,
+                        index=cluster_analysis.index
+                        )
+        )
+
+        return fig, standardized_cluster_analysis
+
+
 def multi_sel_scatter(df):
     selected_columns = st.multiselect(
         'Select Two Columns for Correlation',
@@ -141,6 +199,7 @@ def build_logreg(data_proc):
         st.markdown("##### Classification Report")
         st.text(report)
 
+
 def build_cat(data_proc):
     with st.expander("Catboost Model Performance"):
         scores = data_proc.train_cat()
@@ -156,6 +215,12 @@ def build_cat(data_proc):
         st.dataframe(pd.DataFrame(sorted_feat_imp,
                                   columns=['Features', 'Importance']))
 
+def explore_clusters(data_proc):
+    with st.expander("Segmentation Analysis"):
+        fig, cluster_analysis = data_proc.cluster_at_risk_schools()
+        st.plotly_chart(fig)
+        st.write(cluster_analysis)
+
 
 def main():
     st.title('At Risk Schools')
@@ -170,6 +235,8 @@ def main():
         multi_sel_scatter(data_processor.data)
     build_logreg(data_processor)
     build_cat(data_processor)
+    explore_clusters(data_processor)
+
 
 if __name__ == '__main__':
     main()
